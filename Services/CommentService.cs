@@ -7,12 +7,18 @@ public class CommentService : ICommentService
 
     private readonly ApplicationDbContext _db;
     private readonly CacheService _cache;
+    private readonly IUserEventProducer _userEventProducer;
     private readonly ILogger<CommentService> _logger;
 
-    public CommentService(ApplicationDbContext db, CacheService cache, ILogger<CommentService> logger)
+    public CommentService(
+        ApplicationDbContext db,
+        CacheService cache,
+        IUserEventProducer userEventProducer,
+        ILogger<CommentService> logger)
     {
         _db = db;
         _cache = cache;
+        _userEventProducer = userEventProducer;
         _logger = logger;
     }
 
@@ -68,6 +74,13 @@ public class CommentService : ICommentService
         await _db.SaveChangesAsync();
 
         await InvalidateArticleCache(comment.ArticleId);
+
+        await _userEventProducer.EmitAsync(
+            "ArticleCommented",
+            comment.AuthorId,
+            comment.ArticleId,
+            new Dictionary<string, object?> { ["commentId"] = comment.Id });
+
         return comment.Id;
     }
 

@@ -1,4 +1,5 @@
 using System.Text;
+using Confluent.Kafka;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -59,6 +60,21 @@ builder.Services.AddAuthentication(options =>
     });
 
 builder.Services.AddAuthorization();
+
+builder.Services.Configure<KafkaSettings>(builder.Configuration.GetSection("Kafka"));
+
+builder.Services.AddSingleton<IProducer<string, string>>(sp =>
+{
+    var producerConfig = new ProducerConfig
+    {
+        BootstrapServers = builder.Configuration["Kafka:BootstrapServers"],
+        Acks = Acks.All,
+        EnableIdempotence = true,
+    };
+    return new ProducerBuilder<string, string>(producerConfig).Build();
+});
+
+builder.Services.AddSingleton<IUserEventProducer, UserEventProducer>();
 
 builder.Services.AddScoped<CacheService>();
 builder.Services.AddScoped<ICommentService, CommentService>();
