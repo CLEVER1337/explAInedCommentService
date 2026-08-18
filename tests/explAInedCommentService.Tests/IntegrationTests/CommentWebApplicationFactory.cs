@@ -1,11 +1,14 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
 public class CommentWebApplicationFactory : WebApplicationFactory<Program>
 {
     public string InMemoryDbName { get; } = $"explAIned-comments-tests-{Guid.NewGuid()}";
+
+    public RecordingUserEventProducer UserEvents { get; } = new();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -22,6 +25,11 @@ public class CommentWebApplicationFactory : WebApplicationFactory<Program>
                 ["Jwt:Issuer"] = "http://localhost:5125/",
                 ["Jwt:Audience"] = "http://localhost:5125/",
             });
+        });
+
+        builder.ConfigureTestServices(services =>
+        {
+            services.AddSingleton<IUserEventProducer>(UserEvents);
         });
     }
 
