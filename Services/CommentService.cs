@@ -58,6 +58,25 @@ public class CommentService : ICommentService
         return list;
     }
 
+    public async Task<IEnumerable<Comment>> GetByAuthorAsync(string authorId, int limit, int offset)
+    {
+        return await _db.Comments
+            .Where(c => c.AuthorId == authorId && c.DeletedAt == null)
+            .OrderByDescending(c => c.CreatedAt)
+            .ThenByDescending(c => c.Id)
+            .Skip(offset)
+            .Take(limit)
+            .AsNoTracking()
+            .ToListAsync();
+    }
+
+    public Task<int> CountByAuthorAsync(string authorId)
+    {
+        return _db.Comments
+            .Where(c => c.AuthorId == authorId && c.DeletedAt == null)
+            .CountAsync();
+    }
+
     public Task<Comment?> GetByIdAsync(int id)
     {
         return _db.Comments.FirstOrDefaultAsync(c => c.Id == id && c.DeletedAt == null);
