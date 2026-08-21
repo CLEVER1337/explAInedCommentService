@@ -21,6 +21,7 @@ public class ApplicationDbContext : DbContext
             entity.Property(c => c.Content).IsRequired().HasMaxLength(4000);
             entity.HasIndex(c => c.ArticleId);
             entity.HasIndex(c => new { c.ArticleId, c.CreatedAt });
+            entity.HasIndex(c => new { c.AuthorId, c.CreatedAt });
         });
     }
 }

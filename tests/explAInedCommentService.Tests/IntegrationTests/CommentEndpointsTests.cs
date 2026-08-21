@@ -123,6 +123,54 @@ public class CommentEndpointsTests : IClassFixture<CommentWebApplicationFactory>
     }
 
     [Fact]
+    public async Task ListForAuthor_ReturnsOnlyThatAuthorAndExcludesDeleted()
+    {
+        Seed(new Comment { ArticleId = ArticleId, AuthorId = AuthorId, Content = "mine" });
+        Seed(new Comment { ArticleId = ArticleId, AuthorId = AuthorId, Content = "gone", DeletedAt = DateTime.UtcNow });
+        Seed(new Comment { ArticleId = ArticleId, AuthorId = StrangerId, Content = "theirs" });
+
+        var resp = await CreateClient().GetAsync($"/comments/author/{AuthorId}");
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var body = await resp.Content.ReadFromJsonAsync<List<Comment>>();
+        Assert.Single(body!);
+        Assert.Equal("mine", body![0].Content);
+    }
+
+    [Fact]
+    public async Task ListForAuthor_ReportsTheTotalInAHeader()
+    {
+        Seed(new Comment { ArticleId = ArticleId, AuthorId = AuthorId, Content = "one" });
+        Seed(new Comment { ArticleId = ArticleId, AuthorId = AuthorId, Content = "two" });
+
+        var resp = await CreateClient().GetAsync($"/comments/author/{AuthorId}?limit=1");
+
+        Assert.Single((await resp.Content.ReadFromJsonAsync<List<Comment>>())!);
+        Assert.Equal("2", resp.Headers.GetValues("X-Total-Count").Single());
+    }
+
+    [Fact]
+    public async Task ListForAuthor_IsPublicAndEmptyForAnUnknownAuthor()
+    {
+        var resp = await CreateClient().GetAsync("/comments/author/nobody");
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        Assert.Empty((await resp.Content.ReadFromJsonAsync<List<Comment>>())!);
+        Assert.Equal("0", resp.Headers.GetValues("X-Total-Count").Single());
+    }
+
+    [Fact]
+    public async Task ListForAuthor_ClampsAnAbsurdLimit()
+    {
+        Seed(new Comment { ArticleId = ArticleId, AuthorId = AuthorId, Content = "one" });
+
+        var resp = await CreateClient().GetAsync($"/comments/author/{AuthorId}?limit=100000");
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        Assert.Single((await resp.Content.ReadFromJsonAsync<List<Comment>>())!);
+    }
+
+    [Fact]
     public async Task GetById_Found_Returns200()
     {
         var seeded = Seed(new Comment { ArticleId = ArticleId, AuthorId = AuthorId, Content = "hi" });

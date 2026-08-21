@@ -1,40 +1,48 @@
 using System.Text;
+using Confluent.Kafka;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Distributed;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Caching.StackExchangeRedis;
 using Microsoft.IdentityModel.Tokens;
 using Prometheus;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Configuration.AddJsonFile("appsettings.json");
-
-var dbProvider = builder.Configuration["Database:Provider"] ?? "Postgres";
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
+builder.Services.AddDbContext<ApplicationDbContext>((sp, options) =>
 {
+    var configuration = sp.GetRequiredService<IConfiguration>();
+    var dbProvider = configuration["Database:Provider"] ?? "Postgres";
+
     if (string.Equals(dbProvider, "InMemory", StringComparison.OrdinalIgnoreCase))
     {
-        var dbName = builder.Configuration["Database:InMemoryName"] ?? "explAIned-comments-tests";
-        options.UseInMemoryDatabase(dbName);
+        options.UseInMemoryDatabase(
+            configuration["Database:InMemoryName"] ?? "explAIned-comments-tests");
     }
     else
     {
-        options.UseNpgsql(builder.Configuration["ConnectionStrings:PostgreSQL"]);
+        options.UseNpgsql(configuration["ConnectionStrings:PostgreSQL"]);
     }
 });
 
-var cacheProvider = builder.Configuration["Cache:Provider"] ?? "Redis";
-if (string.Equals(cacheProvider, "Memory", StringComparison.OrdinalIgnoreCase))
+builder.Services.AddOptions();
+builder.Services.AddSingleton<MemoryDistributedCache>();
+builder.Services.AddSingleton<RedisCache>();
+builder.Services.Configure<RedisCacheOptions>(options =>
 {
-    builder.Services.AddDistributedMemoryCache();
-}
-else
+    options.Configuration = builder.Configuration["ConnectionStrings:Redis"];
+    options.InstanceName = "explAIned_";
+});
+
+builder.Services.AddSingleton<IDistributedCache>(sp =>
 {
-    builder.Services.AddStackExchangeRedisCache(options =>
-    {
-        options.Configuration = builder.Configuration["ConnectionStrings:Redis"];
-        options.InstanceName = "explAIned_";
-    });
-}
+    var cacheProvider = sp.GetRequiredService<IConfiguration>()["Cache:Provider"] ?? "Redis";
+
+    return string.Equals(cacheProvider, "Memory", StringComparison.OrdinalIgnoreCase)
+        ? sp.GetRequiredService<MemoryDistributedCache>()
+        : sp.GetRequiredService<RedisCache>();
+});
 
 builder.Services.AddControllersWithViews();
 
@@ -59,6 +67,21 @@ builder.Services.AddAuthentication(options =>
     });
 
 builder.Services.AddAuthorization();
+
+builder.Services.Configure<KafkaSettings>(builder.Configuration.GetSection("Kafka"));
+
+builder.Services.AddSingleton<IProducer<string, string>>(sp =>
+{
+    var producerConfig = new ProducerConfig
+    {
+        BootstrapServers = builder.Configuration["Kafka:BootstrapServers"],
+        Acks = Acks.All,
+        EnableIdempotence = true,
+    };
+    return new ProducerBuilder<string, string>(producerConfig).Build();
+});
+
+builder.Services.AddSingleton<IUserEventProducer, UserEventProducer>();
 
 builder.Services.AddScoped<CacheService>();
 builder.Services.AddScoped<ICommentService, CommentService>();

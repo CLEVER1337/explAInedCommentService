@@ -7,12 +7,18 @@ public class CommentService : ICommentService
 
     private readonly ApplicationDbContext _db;
     private readonly CacheService _cache;
+    private readonly IUserEventProducer _userEventProducer;
     private readonly ILogger<CommentService> _logger;
 
-    public CommentService(ApplicationDbContext db, CacheService cache, ILogger<CommentService> logger)
+    public CommentService(
+        ApplicationDbContext db,
+        CacheService cache,
+        IUserEventProducer userEventProducer,
+        ILogger<CommentService> logger)
     {
         _db = db;
         _cache = cache;
+        _userEventProducer = userEventProducer;
         _logger = logger;
     }
 
@@ -52,6 +58,25 @@ public class CommentService : ICommentService
         return list;
     }
 
+    public async Task<IEnumerable<Comment>> GetByAuthorAsync(string authorId, int limit, int offset)
+    {
+        return await _db.Comments
+            .Where(c => c.AuthorId == authorId && c.DeletedAt == null)
+            .OrderByDescending(c => c.CreatedAt)
+            .ThenByDescending(c => c.Id)
+            .Skip(offset)
+            .Take(limit)
+            .AsNoTracking()
+            .ToListAsync();
+    }
+
+    public Task<int> CountByAuthorAsync(string authorId)
+    {
+        return _db.Comments
+            .Where(c => c.AuthorId == authorId && c.DeletedAt == null)
+            .CountAsync();
+    }
+
     public Task<Comment?> GetByIdAsync(int id)
     {
         return _db.Comments.FirstOrDefaultAsync(c => c.Id == id && c.DeletedAt == null);
@@ -68,6 +93,13 @@ public class CommentService : ICommentService
         await _db.SaveChangesAsync();
 
         await InvalidateArticleCache(comment.ArticleId);
+
+        await _userEventProducer.EmitAsync(
+            "ArticleCommented",
+            comment.AuthorId,
+            comment.ArticleId,
+            new Dictionary<string, object?> { ["commentId"] = comment.Id });
+
         return comment.Id;
     }
 

@@ -21,6 +21,21 @@ public class CommentController : Controller
     }
 
     [HttpGet]
+    [Route("author/{authorId}")]
+    public async Task<IResult> ListForAuthor(
+        [FromRoute] string authorId, [FromQuery] int? limit, [FromQuery] int? offset)
+    {
+        var effectiveLimit = Math.Clamp(limit ?? 20, 1, 100);
+        var effectiveOffset = Math.Max(offset ?? 0, 0);
+
+        var comments = await _commentService.GetByAuthorAsync(authorId, effectiveLimit, effectiveOffset);
+
+        Response.Headers["X-Total-Count"] = (await _commentService.CountByAuthorAsync(authorId)).ToString();
+
+        return Results.Ok(comments);
+    }
+
+    [HttpGet]
     [Route("{id:int}")]
     public async Task<IResult> GetById([FromRoute] int id)
     {
